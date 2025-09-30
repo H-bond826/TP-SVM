@@ -1,0 +1,7 @@
+---
+title: "TP SVM: Rapport d'Analyse"
+author: "Qingjian ZHU"
+format: 
+  pdf: default  
+  html: default 
+---
