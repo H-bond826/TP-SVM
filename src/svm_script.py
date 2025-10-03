@@ -206,7 +206,7 @@ idx0 = (lfw_people.target == target_names.index(names[0]))
 idx1 = (lfw_people.target == target_names.index(names[1]))
 images = np.r_[images[idx0], images[idx1]]
 n_samples = images.shape[0]
-y = np.r_[np.zeros(np.sum(idx0)), np.ones(np.sum(idx1))].astype(np.int)
+y = np.r_[np.zeros(np.sum(idx0)), np.ones(np.sum(idx1))].astype(int)
 
 # plot a sample set of the data
 plot_gallery(images, np.arange(12))
