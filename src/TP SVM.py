@@ -2,6 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.svm import SVC
+from sklearn.svm import LinearSVC
 
 from svm_source import *
 from sklearn import svm
@@ -192,17 +193,54 @@ for C in Cs:
     # 这里用测试集分数来挑 C（课程里通常会再套一层验证集/交叉验证；本 TP 用固定半数当测试集）
     scores.append(clf_tmp.score(X_test, y_test))
 
-ind = np.argmax(scores)
-print("Best C: {}".format(Cs[ind]))
+ind = int(np.argmax(scores))
+best_C = Cs[ind]
+best_acc = float(scores[ind])
+best_err = 1.0 - best_acc
+
+print("Best C: {}".format(best_C))
 
 plt.figure()
-plt.plot(Cs, scores)
-plt.xlabel("Parametres de regularisation C")
-plt.ylabel("Scores d'apprentissage")
+plt.plot(Cs, scores, label="Accuracy")
+plt.scatter([best_C], [best_acc], s=80, zorder=3)
+plt.axvline(best_C, linestyle="--", alpha=0.6)
+plt.annotate(
+    "Best C={:.1e}\nacc={:.3f}".format(best_C, best_acc),
+    xy=(best_C, best_acc),
+    xytext=(1.5*best_C, min(1.0, best_acc + 0.05)),  
+    arrowprops=dict(arrowstyle="->", lw=1),
+    fontsize=10
+)
+plt.xlabel("Paramètres de régularisation C")
+plt.ylabel("Scores d'apprentissage (accuracy)")
 plt.xscale("log")
+plt.legend()
 plt.tight_layout()
 plt.show()
-print("Best score: {}".format(np.max(scores)))
+
+print("Best score (accuracy): {}".format(best_acc))
+
+# 或者用Erreur de prédiction，效果是一样的
+errors = 1.0 - np.array(scores)
+
+plt.figure()
+plt.plot(Cs, errors, label="Erreur de prédiction")
+plt.scatter([best_C], [best_err], s=80, zorder=3)
+plt.axvline(best_C, linestyle="--", alpha=0.6)
+plt.annotate(
+    "Best C={:.1e}\nerreur={:.3f}".format(best_C, best_err),
+    xy=(best_C, best_err),
+    xytext=(1.5*best_C, min(1.0, best_err + 0.05)),
+    arrowprops=dict(arrowstyle="->", lw=1),
+    fontsize=10
+)
+plt.xlabel("Paramètre de régularisation C")
+plt.ylabel("Erreur de prédiction (1 - accuracy)")
+plt.xscale("log")
+plt.legend()
+plt.tight_layout()
+plt.show()
+
 
 print("Predicting the people names on the testing set")
 t0 = time()
@@ -272,38 +310,56 @@ run_svm_cv(X_noisy, y)
 # Q6
 print("Score apres reduction de dimension")
 
-# 1) 依然从“带噪声”的高维特征出发
-#    注意：我们自己在这里重新划分一次 train/test，保证 PCA 只在训练集上拟合
-indices_pca = np.random.permutation(X_noisy.shape[0])
-train_idx_pca = indices_pca[:X_noisy.shape[0] // 2]
-test_idx_pca  = indices_pca[X_noisy.shape[0] // 2:]
+# 为了比较不同降维维数的效果，这里测试一组 n_components
+# 注意上限不能超过 min(n_samples, n_features_noisy)
+max_nc = min(X_noisy.shape[0] // 2, X_noisy.shape[1])  # 留点余量（训练集大小的阶）
+grid_n_components = [20, 60, 100]
+grid_n_components = [k for k in grid_n_components if k <= max_nc]
+if len(grid_n_components) == 0:
+    grid_n_components = [min(20, max_nc)]
 
-Xn_train = X_noisy[train_idx_pca, :]
-Xn_test  = X_noisy[test_idx_pca, :]
-yn_train = y[train_idx_pca]
-yn_test  = y[test_idx_pca]
+C_grid = list(np.logspace(-3, 3, 5))
 
-# 2) PCA：只用训练集“fit”，再 transform 训练/测试
-n_components = 12  # 可调整：20/50/100 试试看
-pca = PCA(n_components=n_components, svd_solver='randomized', whiten=True, random_state=0)
-pca.fit(Xn_train)                # 只在训练集上拟合
-Xtr = pca.transform(Xn_train)    # 训练集降维
-Xte = pca.transform(Xn_test)     # 测试集用同一个变换降维
+test_scores = []
+train_scores = []
+best_records = []  # (k, best_C, train_score, test_score)
 
-# （可选）看看累计解释方差，有助于选择 n_components
+# 取与前面一致的划分
+Xn_train = X_noisy[train_idx, :]
+Xn_test  = X_noisy[test_idx, :]
+yn_train = y[train_idx]
+yn_test  = y[test_idx]
+
+for k in grid_n_components:
+    # 1) 在训练集上拟合 PCA（随机 SVD），再同时变换训练/测试
+    pca = PCA(n_components=k, svd_solver='randomized')
+    Xtr = pca.fit_transform(Xn_train)
+    Xte = pca.transform(Xn_test)
+
+    # 2) 线性核 + 扫 C（小网格）做网格搜索
+    clf = GridSearchCV(SVC(kernel='linear'), {'C': C_grid}, n_jobs=-1)
+    clf.fit(Xtr, yn_train)
+
+    tr = clf.score(Xtr, yn_train)
+    te = clf.score(Xte, yn_test)
+    train_scores.append(tr)
+    test_scores.append(te)
+    best_records.append((k, clf.best_params_['C'], tr, te))
+
+# 打印最优的 n_components 及对应 C
+best_idx = int(np.argmax(test_scores))
+best_k, best_C, best_tr, best_te = best_records[best_idx]
+print(f"Best n_components = {best_k}, best C = {best_C}")
+print(f"Train score = {best_tr:.3f}, Test score = {best_te:.3f}")
+
+# 画出 测试分数 vs n_components
 plt.figure()
-plt.plot(np.cumsum(pca.explained_variance_ratio_))
-plt.xlabel("n_components")
-plt.ylabel("explained variance (cumulative)")
+plt.plot(grid_n_components, test_scores, marker='o')
+plt.xlabel("n_components (PCA)")
+plt.ylabel("Test accuracy (linear SVM)")
+plt.title("Impact de la dimension apres PCA (donnees bruitees)")
 plt.tight_layout()
 plt.show()
 
-# 3) 在降维后的数据上跑线性 SVM + 小网格的 C
-parameters = {'kernel': ['linear'], 'C': list(np.logspace(-3, 3, 5))}
-svr = svm.SVC()
-clf_pca = GridSearchCV(svr, parameters)
-clf_pca.fit(Xtr, yn_train)
 
-print('Generalization score with PCA (train, test): %s, %s \n' %
-      (clf_pca.score(Xtr, yn_train), clf_pca.score(Xte, yn_test)))
 # %%
