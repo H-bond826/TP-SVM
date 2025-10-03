@@ -310,54 +310,61 @@ run_svm_cv(X_noisy, y)
 # Q6
 print("Score apres reduction de dimension")
 
-# 为了比较不同降维维数的效果，这里测试一组 n_components
-# 注意上限不能超过 min(n_samples, n_features_noisy)
-max_nc = min(X_noisy.shape[0] // 2, X_noisy.shape[1])  # 留点余量（训练集大小的阶）
-grid_n_components = [20, 60, 100]
+# 复用 Q4 找到的最佳 C（避免在 Q6 再次做网格搜索）
+C_fixed = Cs[ind]
+
+# 全量数据与索引
+Xn_all = X_noisy
+yn_all = y
+
+# n_components 从 10 到 150，步长 10；并根据数据上界自动截断
+max_nc = min(Xn_all.shape[0], Xn_all.shape[1])
+grid_n_components = list(range(10, 151, 10))
 grid_n_components = [k for k in grid_n_components if k <= max_nc]
-if len(grid_n_components) == 0:
+if not grid_n_components:
     grid_n_components = [min(20, max_nc)]
 
-C_grid = list(np.logspace(-3, 3, 5))
+# 只拟合一次 PCA，用最大的 k，这样循环里直接切片前 k 个主成分即可
+Kmax = max(grid_n_components)
+pca = PCA(n_components=Kmax, svd_solver='randomized', iterated_power=1)
+
+# **在全量数据上拟合 PCA（会有数据泄露，但这是你希望的设置）**
+Z_all = pca.fit_transform(Xn_all)   # 形状: (n_samples, Kmax)
 
 test_scores = []
 train_scores = []
-best_records = []  # (k, best_C, train_score, test_score)
-
-# 取与前面一致的划分
-Xn_train = X_noisy[train_idx, :]
-Xn_test  = X_noisy[test_idx, :]
-yn_train = y[train_idx]
-yn_test  = y[test_idx]
+best_records = []  # (k, C_fixed, train_score, test_score)
 
 for k in grid_n_components:
-    # 1) 在训练集上拟合 PCA（随机 SVD），再同时变换训练/测试
-    pca = PCA(n_components=k, svd_solver='randomized')
-    Xtr = pca.fit_transform(Xn_train)
-    Xte = pca.transform(Xn_test)
+    # 取前 k 个主成分，并按原索引还原 train/test
+    Ztr = Z_all[train_idx, :k]
+    Zte = Z_all[test_idx, :k]
+    ytr = yn_all[train_idx]
+    yte = yn_all[test_idx]
 
-    # 2) 线性核 + 扫 C（小网格）做网格搜索
-    clf = GridSearchCV(SVC(kernel='linear'), {'C': C_grid}, n_jobs=-1)
-    clf.fit(Xtr, yn_train)
+    # 更快的线性 SVM：LinearSVC（复用 Q4 的最佳 C）
+    clf = LinearSVC(C=C_fixed, dual="auto", max_iter=5000)
+    clf.fit(Ztr, ytr)
 
-    tr = clf.score(Xtr, yn_train)
-    te = clf.score(Xte, yn_test)
+    tr = clf.score(Ztr, ytr)
+    te = clf.score(Zte, yte)
+
     train_scores.append(tr)
     test_scores.append(te)
-    best_records.append((k, clf.best_params_['C'], tr, te))
+    best_records.append((k, C_fixed, tr, te))
 
-# 打印最优的 n_components 及对应 C
+# 打印最佳的 n_components 及对应分数
 best_idx = int(np.argmax(test_scores))
 best_k, best_C, best_tr, best_te = best_records[best_idx]
 print(f"Best n_components = {best_k}, best C = {best_C}")
 print(f"Train score = {best_tr:.3f}, Test score = {best_te:.3f}")
 
-# 画出 测试分数 vs n_components
+# 可视化：测试分数 vs n_components
 plt.figure()
 plt.plot(grid_n_components, test_scores, marker='o')
-plt.xlabel("n_components (PCA)")
-plt.ylabel("Test accuracy (linear SVM)")
-plt.title("Impact de la dimension apres PCA (donnees bruitees)")
+plt.xlabel("n_components (PCA, fit sur full data)")
+plt.ylabel("Test accuracy (LinearSVC)")
+plt.title("Impact de la dimension apres PCA (fit full) sur donnees bruitees")
 plt.tight_layout()
 plt.show()
 
