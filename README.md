@@ -3,7 +3,7 @@
 ---
 
 ### Réalisé par
-*   **[Qingjian ZHU]**
+*   **Qingjian ZHU**
 
 *Projet pour le cours HAX907X - Année 2025-2026*
 
