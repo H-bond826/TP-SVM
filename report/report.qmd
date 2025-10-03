@@ -22,15 +22,19 @@ Ce rapport présente les résultats du travail pratique sur les Machines à Vect
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from svm_source import *
 from time import time
-
+from sklearn import svm
 from sklearn.svm import SVC
+from sklearn.svm import LinearSVC
 from sklearn import datasets
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.datasets import fetch_lfw_people
 from sklearn.decomposition import PCA
 from matplotlib.colors import ListedColormap
+from time import time
+scaler = StandardScaler()
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -345,14 +349,22 @@ Enfin, on peut observer que la dernière figure est une carte de chaleur des poi
 
 ## Q5: Impact de l'ajout de variables de nuisance
 
-Nous allons maintenant évaluer l'effet de l'ajout de variables non informatives (bruit gaussien) sur les performances du classifieur. C'est une illustration de la "malédiction de la dimensionnalité".
+Nous allons maintenant évaluer l'effet de l'ajout de variables non informatives (bruit gaussien) sur les performances du classifieur. 
+
+La procédure concrète est la suivante :
+
+1.  **`run_svm_cv(X, y)`** : Appliquer un `GridSearchCV` sur les caractéristiques faciales originales (ici, les pixels moyens en niveaux de gris de chaque visage, préalablement standardisés) afin d'établir une ligne de base sans bruit.
+
+2.  **Construire le bruit (`noise`)** : Générer 300 caractéristiques de bruit gaussien indépendant de forme `(n_samples, 300)` avec une variance de 1. Ensuite, concaténer ce bruit avec les caractéristiques originales pour créer `X_noisy` (la dimensionnalité augmente de 300, mais le nombre d'échantillons reste inchangé).
+
+3.  **`run_svm_cv(X_noisy, y)`** : Exécuter à nouveau le même processus SVM sur l'ensemble de données bruité.
 
 ```{python}
 #| warning: false
 #| message: false
 
 # Q5
-
+from sklearn import svm
 def run_svm_cv(_X, _y):
     _indices = np.random.permutation(_X.shape[0])
     _train_idx, _test_idx = _indices[:_X.shape[0] // 2], _indices[_X.shape[0] // 2:]
@@ -383,7 +395,11 @@ X_noisy = X_noisy[np.random.permutation(X.shape[0])]
 run_svm_cv(X_noisy, y)
 ```
 
-**Analyse :** Comme attendu, l'ajout de 300 variables de bruit aléatoire a considérablement dégradé les performances du classifieur. Le modèle est "distrait" par ces caractéristiques non pertinentes et a plus de mal à trouver la frontière de séparation optimale basée sur les caractéristiques utiles.
+**Analyse :** Comme attendu, l'ajout de 300 variables de bruit aléatoire a considérablement dégradé les performances du classifieur. 
+
+Pour un nombre d'échantillons fixe, l'ajout massif de caractéristiques non informatives réduit la marge effective d'un SVM linéaire (une « séparabilité fallacieuse » pouvant apparaître dans les directions du bruit). Le modèle devient ainsi plus sensible aux perturbations aléatoires, et son erreur de généralisation augmente.
+
+C'est également une manifestation intuitive du « fléau de la dimensionnalité » dans un cadre de haute dimension avec peu d'échantillons : plus le nombre de dimensions de bruit est élevé, plus il est difficile de trouver un hyperplan de séparation stable.
 
 ## Q6: Amélioration via la réduction de dimension (PCA)
 
@@ -393,35 +409,67 @@ Pour contrer l'effet négatif des variables de nuisance, nous appliquons une Ana
 #| warning: false
 #| message: false
 
-grid_n_components = [20, 60, 100, 150]
-test_scores_pca = []
+# Q6
+print("Score apres reduction de dimension")
+
+# 复用 Q4 找到的最佳 C（避免在 Q6 再次做网格搜索）
+C_fixed = Cs[ind]
+
+# 全量数据与索引
+Xn_all = X_noisy
+yn_all = y
+
+# n_components 从 10 到 150，步长 10；并根据数据上界自动截断
+max_nc = min(Xn_all.shape[0], Xn_all.shape[1])
+grid_n_components = list(range(10, 151, 10))
+grid_n_components = [k for k in grid_n_components if k <= max_nc]
+if not grid_n_components:
+    grid_n_components = [min(20, max_nc)]
+
+# 只拟合一次 PCA，用最大的 k，这样循环里直接切片前 k 个主成分即可
+Kmax = max(grid_n_components)
+pca = PCA(n_components=Kmax, svd_solver='randomized', iterated_power=1)
+
+# **在全量数据上拟合 PCA（会有数据泄露，但这是你希望的设置）**
+Z_all = pca.fit_transform(Xn_all)   # 形状: (n_samples, Kmax)
+
+test_scores = []
+train_scores = []
+best_records = []  # (k, C_fixed, train_score, test_score)
 
 for k in grid_n_components:
-    print(f"Test avec n_components = {k}...")
-    pca = PCA(n_components=k, svd_solver='randomized', whiten=True)
-    
-    # Appliquer la PCA
-    X_train_pca = pca.fit_transform(X_train_noisy)
-    X_test_pca = pca.transform(X_test_noisy)
-    
-    # Calculer le score
-    score_pca = run_svm_grid_search(X_train_pca, y_train_faces, X_test_pca, y_test_faces)
-    test_scores_pca.append(score_pca)
+    # 取前 k 个主成分，并按原索引还原 train/test
+    Ztr = Z_all[train_idx, :k]
+    Zte = Z_all[test_idx, :k]
+    ytr = yn_all[train_idx]
+    yte = yn_all[test_idx]
 
-# Plot
-plt.figure(figsize=(10, 6))
-plt.plot(grid_n_components, test_scores_pca, marker='o')
-plt.xlabel("Nombre de composantes principales (k)")
-plt.ylabel("Score de test (Accuracy)")
-plt.title("Performance du SVM après PCA sur données bruitées")
-plt.grid(True)
+    # 更快的线性 SVM：LinearSVC（复用 Q4 的最佳 C）
+    clf = LinearSVC(C=C_fixed, dual="auto", max_iter=5000)
+    clf.fit(Ztr, ytr)
+
+    tr = clf.score(Ztr, ytr)
+    te = clf.score(Zte, yte)
+
+    train_scores.append(tr)
+    test_scores.append(te)
+    best_records.append((k, C_fixed, tr, te))
+
+# 打印最佳的 n_components 及对应分数
+best_idx = int(np.argmax(test_scores))
+best_k, best_C, best_tr, best_te = best_records[best_idx]
+print(f"Best n_components = {best_k}, best C = {best_C}")
+print(f"Train score = {best_tr:.3f}, Test score = {best_te:.3f}")
+
+# 可视化：测试分数 vs n_components
+plt.figure()
+plt.plot(grid_n_components, test_scores, marker='o')
+plt.xlabel("n_components (PCA, fit sur full data)")
+plt.ylabel("Test accuracy (LinearSVC)")
+plt.title("Impact de la dimension apres PCA (fit full) sur donnees bruitees")
+plt.tight_layout()
 plt.show()
 
-best_idx_pca = np.argmax(test_scores_pca)
-best_k = grid_n_components[best_idx_pca]
-best_score_pca = test_scores_pca[best_idx_pca]
-print(f"Meilleur nombre de composantes : {best_k}")
-print(f"Meilleur score après PCA : {best_score_pca:.4f}")
 ```
 
 **Analyse :** Les résultats sont spectaculaires. En utilisant la PCA pour réduire la dimensionnalité des données bruitées, nous avons pu récupérer, et même légèrement dépasser, les performances du modèle sur les données originales non bruitées. Le graphique montre qu'un nombre optimal de composantes (autour de 100-150) permet de capturer l'essentiel de l'information utile tout en filtrant une grande partie du bruit. Cela démontre l'efficacité de la PCA comme technique de pré-traitement pour les données de grande dimension.
