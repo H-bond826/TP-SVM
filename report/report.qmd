@@ -1,12 +1,12 @@
 ---
 title: "Rapport du TP sur les Machines à Vecteurs de Support (SVM)"
-author: "[Votre Nom Complet et celui de votre coéquipier]"
-date: "aujourd'hui"
+author: "Qingjian ZHU"
 format: 
   pdf:
     toc: true
     number-sections: true
 lang: fr
+execute-dir: project 
 ---
 
 ## Introduction
@@ -22,8 +22,6 @@ Ce rapport présente les résultats du travail pratique sur les Machines à Vect
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from svm_source import *
-from time import time
 from sklearn import svm
 from sklearn.svm import SVC
 from sklearn.svm import LinearSVC
@@ -40,6 +38,11 @@ import warnings
 warnings.filterwarnings('ignore')
 
 plt.style.use('ggplot')
+
+import sys, os
+sys.path.insert(0, os.path.abspath('../src'))
+
+from svm_source import *
 ```
 
 # Classification sur le jeu de données Iris
