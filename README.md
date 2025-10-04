@@ -21,6 +21,7 @@ Le projet est organisé selon la structure recommandée suivante pour une meille
 │
 ├── src/                   # Dossier contenant les scripts Python
 │   ├── TP SVM.py          # Script principal d'exécution
+│   ├── svm_gui_light.py   # Script pour Q3
 │   └── svm_source.py      # Fonctions utilitaires (si applicable)
 │
 ├── requirements.txt       # Liste des dépendances Python
