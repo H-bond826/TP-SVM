@@ -157,6 +157,143 @@ plt.draw()
 
 **Analyse :** Nous remarquons qu'en entraînant les modèles avec un noyau linéaire et un noyau polynomial, les meilleurs scores finaux sont quasiment identiques, s'élevant respectivement à 0,75 sur l'ensemble d'entraînement et 0,68 sur l'ensemble de test. Les deux modèles possèdent des frontières de décision très similaires. En réalité, cela s'explique par le fait que pour le noyau polynomial, le meilleur score est atteint avec un degré égal à 1('degree': np.int64(1)), ce qui le rend, en substance, équivalent à un noyau linéaire.
 
+# SVM GUI (optionnel)
+## Q3
+
+**Objectifs.** Observer, sur un jeu de données 2D fortement déséquilibré (≥ 90% / 10%), l’effet de la diminution du paramètre de régularisation \(C\) pour un SVM **linéaire** : largeur de la marge, déplacement de la frontière, nombre de vecteurs de support et impact sur la classe minoritaire.
+
+Initialement, les consignes demandaient d'utiliser `svm_gui.py` pour créer manuellement les points de données. Cependant, afin d'améliorer la présentation des résultats et de pouvoir contrôler librement des paramètres tels que la taille de l'échantillon ou le degré de séparation des classes, j'ai choisi de créer un nouveau script simplifié, `svm_gui_light.py`.Le nouveau script permet ainsi d'atteindre le même objectif que l'original, mais de manière plus ciblée et flexible.
+
+**Données & Méthode.** Nous générons un échantillon \((X, y)\) synthétique (2 caractéristiques) avec la fonction `make_classification`, en imposant une proportion 90% (classe majoritaire) / 10% (classe minoritaire). Nous entraînons un pipeline `StandardScaler` + `SVC(kernel='linear', C)` pour plusieurs valeurs de \(C\) (de grand à petit), et nous traçons la **frontière de décision** \(f(x)=0\) ainsi que les **marges** \(f(x)=\pm1\).
+
+```{python}
+#| echo: false
+#| fig-width: 12
+#| fig-align: center
+#| out-width: 95%
+#| fig-pos: "H" 
+
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.datasets import make_classification
+from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score, confusion_matrix
+from sklearn.model_selection import train_test_split
+
+# ---------- 1) Données synthétiques fortement déséquilibrées ----------
+def make_imbalanced_2d(
+    n_samples=600,
+    weights=(0.9, 0.1),   # 90% vs 10%
+    class_sep=1.0,        # séparabilité inter-classes
+    flip_y=0.02,          # un peu de bruit d'étiquettes
+    random_state=0
+):
+    X, y = make_classification(
+        n_samples=n_samples,
+        n_features=2,
+        n_redundant=0,
+        n_informative=2,
+        n_clusters_per_class=1,
+        weights=list(weights),
+        class_sep=class_sep,
+        flip_y=flip_y,
+        random_state=random_state,
+    )
+    return X, y
+
+# ---------- 2) Outils de tracé (frontière et marges comme dans svm_gui) ----------
+def plot_decision_function(ax, clf, X, padding=0.6, grid_res=300, fill=True):
+    x_min, x_max = X[:,0].min() - padding, X[:,0].max() + padding
+    y_min, y_max = X[:,1].min() - padding, X[:,1].max() + padding
+    xx, yy = np.meshgrid(
+        np.linspace(x_min, x_max, grid_res),
+        np.linspace(y_min, y_max, grid_res)
+    )
+    Z = clf.decision_function(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
+    if fill:
+        ax.contourf(xx, yy, Z, levels=20, alpha=0.25)
+    ax.contour(xx, yy, Z, levels=[0], linewidths=2)        # frontière
+    ax.contour(xx, yy, Z, levels=[-1, 1], linestyles="--") # marges
+
+def scatter_data(ax, X, y, sv=None):
+    ax.scatter(X[y==1,0], X[y==1,1], s=25, c='tab:blue', edgecolor='k', label='Classe +1')
+    ax.scatter(X[y==0,0], X[y==0,1], s=25, edgecolor='k', c='tab:gray', label='Classe 0')
+    if sv is not None:
+        ax.scatter(sv[:,0], sv[:,1], s=90, facecolors='none', edgecolors='k',
+                   linewidths=1.5, label='Vecteurs de support')
+
+# ---------- 3) Expérience : plusieurs C (grand -> petit) ----------
+X, y = make_imbalanced_2d(n_samples=600, weights=(0.9, 0.1), class_sep=1.0, random_state=0)
+Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.25, random_state=0, stratify=y)
+
+Cs = [10.0, 1.0, 0.3, 0.1, 0.01, 0.003]
+ncols = 3
+nrows = int(np.ceil(len(Cs)/ncols))
+fig, axes = plt.subplots(nrows, ncols, figsize=(4*ncols, 4.2*nrows), squeeze=False)
+
+print("Répartition (train): {:.1f}% vs {:.1f}%".format(100*(ytr==0).mean(), 100*(ytr==1).mean()))
+print("Répartition (test) : {:.1f}% vs {:.1f}%".format(100*(yte==0).mean(), 100*(yte==1).mean()))
+print("-"*50)
+
+rows_metrics = []
+for idx, C in enumerate(Cs):
+    r, c = divmod(idx, ncols)
+    ax = axes[r][c]
+
+    clf = make_pipeline(StandardScaler(), SVC(kernel='linear', C=C))
+    clf.fit(Xtr, ytr)
+
+    svc = clf.named_steps['svc']
+    sv_idx = svc.support_
+    sv_raw = Xtr[sv_idx]
+
+    yhat_tr = clf.predict(Xtr)
+    yhat_te = clf.predict(Xte)
+
+    acc_tr = accuracy_score(ytr, yhat_tr)
+    acc_te = accuracy_score(yte, yhat_te)
+    bacc  = balanced_accuracy_score(yte, yhat_te)
+    f1m   = f1_score(yte, yhat_te, average='macro')
+
+    rows_metrics.append((C, acc_tr, acc_te, bacc, f1m, len(sv_idx)))
+
+    print(f"C={C:<5} | train acc={acc_tr:.3f} | test acc={acc_te:.3f} | bal.acc={bacc:.3f} | macro-F1={f1m:.3f} | #SV={len(sv_idx)}")
+
+    plot_decision_function(ax, clf, Xtr, padding=0.6, fill=True)
+    scatter_data(ax, Xtr, ytr, sv=sv_raw)
+    ax.set_title(f"SVM linéaire, C={C}\ntrain={acc_tr:.3f}, test={acc_te:.3f}, SV={len(sv_idx)}")
+    ax.set_xlabel("x1"); ax.set_ylabel("x2")
+    ax.legend(loc='upper right', fontsize=8)
+
+# masquer les sous-figures vides si besoin
+for j in range(idx+1, nrows*ncols):
+    r, c = divmod(j, ncols)
+    axes[r][c].axis('off')
+
+plt.tight_layout()
+plt.show()
+
+# Tableau récapitulatif (imprimé dans la console)
+import pandas as pd
+dfm = pd.DataFrame(rows_metrics, columns=["C","acc_train","acc_test","balanced_acc","macro_F1","#SV"])
+```
+
+Nous observons plusieurs phénomènes sur les graphiques et dans les données :
+
+**1. Déplacement de la frontière de décision :**
+*   **Lorsque C est grand (ex. 10, 1) :** La frontière se positionne plus près du "milieu géométrique" des deux classes, essayant de les séparer au mieux. 
+*   **Lorsque C diminue (ex. 0.01) :** La frontière est "poussée" vers la classe minoritaire. Le modèle préfère tolérer des erreurs de classification sur cette dernière en échange d'une marge plus large, ce qui a pour effet de "satisfaire" la classe majoritaire.
+*   **Lorsque C est très petit (ex. 0.003) :** Le phénomène est encore plus accentué. Le classifieur tend à prédire presque exclusivement la classe majoritaire sur l'ensemble de l'espace.
+
+**2. Largeur de la marge (margin) :**
+*   On constate que **plus C est petit, plus la marge est large**. Graphiquement, les lignes de contour `±1` (en pointillé) s'éloignent de la frontière de décision (`f(x)=0`).
+
+**3. Analyse de la précision (accuracy) :**
+*   À partir des données, nous observons que bien que la précision diminue à mesure que C se réduit, elle reste très élevée même pour `C = 0.003`. La raison est que, même si le classifieur assigne à ce stade tous les points à la classe majoritaire (ce qui équivaut à ne plus classifier), le fort déséquilibre des données (90/10) maintient mécaniquement la précision à un niveau élevé.
+
+
 # Tâche de Classification de Visages
 
 Nous abordons maintenant une tâche plus complexe : distinguer les visages de deux personnalités publiques, Tony Blair et Colin Powell, à partir du jeu de données "Labeled Faces in the Wild" (LFW).

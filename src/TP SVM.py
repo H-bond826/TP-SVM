@@ -190,7 +190,6 @@ scores = []
 for C in Cs:
     clf_tmp = SVC(kernel='linear', C=C)
     clf_tmp.fit(X_train, y_train)
-    # 这里用测试集分数来挑 C（课程里通常会再套一层验证集/交叉验证；本 TP 用固定半数当测试集）
     scores.append(clf_tmp.score(X_test, y_test))
 
 ind = int(np.argmax(scores))
@@ -220,7 +219,7 @@ plt.show()
 
 print("Best score (accuracy): {}".format(best_acc))
 
-# 或者用Erreur de prédiction，效果是一样的
+# Erreur de prédiction
 errors = 1.0 - np.array(scores)
 
 plt.figure()
@@ -310,39 +309,35 @@ run_svm_cv(X_noisy, y)
 # Q6
 print("Score apres reduction de dimension")
 
-# 复用 Q4 找到的最佳 C（避免在 Q6 再次做网格搜索）
 C_fixed = Cs[ind]
-
-# 全量数据与索引
 Xn_all = X_noisy
 yn_all = y
 
-# n_components 从 10 到 150，步长 10；并根据数据上界自动截断
+# n_components from 10 to 150 with step 10; clip by data limits
 max_nc = min(Xn_all.shape[0], Xn_all.shape[1])
 grid_n_components = list(range(10, 151, 10))
 grid_n_components = [k for k in grid_n_components if k <= max_nc]
 if not grid_n_components:
     grid_n_components = [min(20, max_nc)]
 
-# 只拟合一次 PCA，用最大的 k，这样循环里直接切片前 k 个主成分即可
+# Fit PCA only once with the largest K later loop just slices the first k PCs
 Kmax = max(grid_n_components)
 pca = PCA(n_components=Kmax, svd_solver='randomized', iterated_power=1)
 
-# **在全量数据上拟合 PCA（会有数据泄露，但这是你希望的设置）**
-Z_all = pca.fit_transform(Xn_all)   # 形状: (n_samples, Kmax)
 
+Z_all = pca.fit_transform(Xn_all)   
 test_scores = []
 train_scores = []
 best_records = []  # (k, C_fixed, train_score, test_score)
 
 for k in grid_n_components:
-    # 取前 k 个主成分，并按原索引还原 train/test
+    # Take the first k principal components and restore original train/test split
     Ztr = Z_all[train_idx, :k]
     Zte = Z_all[test_idx, :k]
     ytr = yn_all[train_idx]
     yte = yn_all[test_idx]
 
-    # 更快的线性 SVM：LinearSVC（复用 Q4 的最佳 C）
+    # Faster linear SVM: LinearSVC (reuse the best C from Q4)
     clf = LinearSVC(C=C_fixed, dual="auto", max_iter=5000)
     clf.fit(Ztr, ytr)
 
@@ -353,13 +348,13 @@ for k in grid_n_components:
     test_scores.append(te)
     best_records.append((k, C_fixed, tr, te))
 
-# 打印最佳的 n_components 及对应分数
+# Print the best n_components and corresponding scores
 best_idx = int(np.argmax(test_scores))
 best_k, best_C, best_tr, best_te = best_records[best_idx]
 print(f"Best n_components = {best_k}, best C = {best_C}")
 print(f"Train score = {best_tr:.3f}, Test score = {best_te:.3f}")
 
-# 可视化：测试分数 vs n_components
+# Visualization: test accuracy vs n_components
 plt.figure()
 plt.plot(grid_n_components, test_scores, marker='o')
 plt.xlabel("n_components (PCA, fit sur full data)")
@@ -367,6 +362,7 @@ plt.ylabel("Test accuracy (LinearSVC)")
 plt.title("Impact de la dimension apres PCA (fit full) sur donnees bruitees")
 plt.tight_layout()
 plt.show()
+
 
 
 # %%
