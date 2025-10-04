@@ -20,10 +20,11 @@ Le projet est organisé selon la structure recommandée suivante pour une meille
 │   └── report.pdf         # Rapport final généré au format PDF
 │
 ├── src/                   # Dossier contenant les scripts Python
-│   ├── svm_scripy.py            # Script principal d'exécution
+│   ├── TP SVM.py          # Script principal d'exécution
 │   └── svm_source.py      # Fonctions utilitaires (si applicable)
 │
 ├── requirements.txt       # Liste des dépendances Python
+├── environment.yml        # Liste des dépendances Python(Conda)
 ├── .gitignore             # Fichiers ignorés par Git
 └── README.md              # Ce fichier d'instructions
 ```
