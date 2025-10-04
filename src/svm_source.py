@@ -127,7 +127,7 @@ def frontiere(f, X, y, w=None, step=50, alpha_choice=1, colorbar=True,
 
 def plot_gallery(images, titles, n_row=3, n_col=4):
     """Helper function to plot a gallery of portraits"""
-    pl.figure(figsize=(1.8 * n_col, 2.4 * n_row))
+    pl.figure(figsize=(1.2 * n_col, 1.6 * n_row))
     pl.subplots_adjust(bottom=0, left=.01, right=.99, top=.90,
                        hspace=.35)
     for i in range(n_row * n_col):

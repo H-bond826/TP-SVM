@@ -4,7 +4,27 @@ author: "Qingjian ZHU"
 format: 
   pdf:
     toc: true
+    fig-pos: "ht"
     number-sections: true
+    fig-cap-location: bottom
+    fig-format: pdf 
+    include-in-header:
+      text: |
+        \usepackage{fvextra}          
+        \DefineVerbatimEnvironment{Highlighting}{Verbatim}{
+          breaklines,breakanywhere,commandchars=\\\{\}
+        }
+        \fvset{breaklines,breakanywhere,formatcom=\footnotesize}
+        \usepackage{upquote}
+        \usepackage{float}
+  html:
+    toc: true
+    code-overflow: wrap
+execute:
+  echo: true               
+  warning: false
+  message: false
+  cache: true
 lang: fr
 execute-dir: project 
 ---
@@ -15,9 +35,6 @@ Ce rapport présente les résultats du travail pratique sur les Machines à Vect
 
 ```{python}
 #| echo: false
-#| warning: false
-#| message: false
-
 # --- Imports et configuration ---
 import numpy as np
 import matplotlib.pyplot as plt
@@ -49,10 +66,7 @@ from svm_source import *
 
 Nous commençons par une tâche de classification simple sur le jeu de données Iris. Nous ne conserverons que les classes 1 et 2, ainsi que les deux premiers attributs pour permettre une visualisation en 2D. Nous comparons les performances d'un noyau linéaire et d'un noyau polynomial.
 
-```{python}
-#| warning: false
-#| message: false
-
+```{python}  
 ###################################################
 #               Iris Dataset
 ###################################################
@@ -62,14 +76,6 @@ X = scaler.fit_transform(X)
 y = iris.target
 X = X[y != 0, :2]
 y = y[y != 0]
-
-# Visualization
-plt.show()
-plt.close("all")
-plt.ion()
-plt.figure(1, figsize=(10, 5))
-plt.title('iris data set')
-plot_2d(X, y)
 
 # split train test (say 25% for the test)
 # using train_test_split whithout shuffling (fix the random state = 42) for reproductibility
@@ -156,9 +162,9 @@ plt.draw()
 Nous abordons maintenant une tâche plus complexe : distinguer les visages de deux personnalités publiques, Tony Blair et Colin Powell, à partir du jeu de données "Labeled Faces in the Wild" (LFW).
 
 ```{python}
-#| echo: false
-#| warning: false
-#| message: false
+#| fig-pos: "H" 
+#| fig-width: 4
+#| out-width: "60%"
 
 ###################################################
 #               Face Recognition Task
@@ -192,7 +198,7 @@ y = np.r_[np.zeros(np.sum(idx0)), np.ones(np.sum(idx1))].astype(int)
 
 # plot a sample set of the data
 plot_gallery(images, np.arange(12))
-plt.show()
+# plt.show()
 ```
 
 ```{python}
@@ -236,8 +242,9 @@ Le paramètre `C` contrôle le compromis entre la complexité du modèle (maximi
 Nous entraînons un SVM linéaire pour une plage de valeurs de `C` et observons son score sur l'ensemble de test.
 
 ```{python}
-#| warning: false
-#| message: false
+#| fig-pos: "H" 
+#| fig-width: 5.5 
+#| out-width: 70%
 
 # Q4
 print("--- Linear kernel ---")
@@ -308,8 +315,6 @@ t0 = time()
 **Analyse :** Le graphique illustre parfaitement le compromis biais-variance. Pour des valeurs de C très faibles, le modèle est sous-ajusté et ses performances sont médiocres sur les deux ensembles. À mesure que C augmente, le modèle s'adapte mieux aux données, et le score de test s'améliore, atteignant un pic. Si C continue d'augmenter au-delà de ce point, le modèle commence à sur-apprendre les spécificités du jeu d'entraînement ; sa précision sur l'ensemble de test connaît alors une légère baisse avant de finalement stagner.
 
 ```{python}
-#| warning: false
-#| message: false
 # predict labels for the X_test images with the best classifier
 clf = SVC(kernel='linear', C=Cs[ind])
 clf.fit(X_train, y_train)
@@ -323,8 +328,9 @@ print("Accuracy : %s" % clf.score(X_test, y_test))
 ```
 
 ```{python}
-#| warning: false
-#| message: false
+#| fig-pos: "H" 
+#| fig-width: 5.5 
+#| out-width: 65%
 ####################################################################
 # Qualitative evaluation of the predictions using matplotlib
 
@@ -363,8 +369,9 @@ La procédure concrète est la suivante :
 3.  **`run_svm_cv(X_noisy, y)`** : Exécuter à nouveau le même processus SVM sur l'ensemble de données bruité.
 
 ```{python}
-#| warning: false
-#| message: false
+#| fig-pos: "H" 
+#| fig-width: 5
+#| out-width: 70%
 
 # Q5
 from sklearn import svm
@@ -408,46 +415,45 @@ C'est également une manifestation intuitive du « fléau de la dimensionnalité
 
 Pour contrer l'effet négatif des variables de nuisance, nous appliquons une Analyse en Composantes Principales (PCA) sur les données bruitées avant de les fournir au SVM. La PCA va identifier les axes de plus grande variance, qui correspondent (on l'espère) aux caractéristiques originales et non au bruit, nous permettant ainsi de "nettoyer" les données.
 
+Afin d'améliorer l'efficacité de l'exécution, nous utilisons ici `LinearSVC` en remplacement de `SVC(kernel='linear')`. Bien que les résultats numériques puissent légèrement différer, cette substitution n'affecte de manière significative ni le principe sous-jacent, ni les conclusions tirées des résultats.
+
 ```{python}
-#| warning: false
-#| message: false
+#| fig-pos: "H" 
+#| fig-width: 5
+#| out-width: 70%
 
 # Q6
 print("Score apres reduction de dimension")
 
-# 复用 Q4 找到的最佳 C（避免在 Q6 再次做网格搜索）
 C_fixed = Cs[ind]
-
-# 全量数据与索引
 Xn_all = X_noisy
 yn_all = y
 
-# n_components 从 10 到 150，步长 10；并根据数据上界自动截断
+# n_components from 10 to 150 with step 10; clip by data limits
 max_nc = min(Xn_all.shape[0], Xn_all.shape[1])
 grid_n_components = list(range(10, 151, 10))
 grid_n_components = [k for k in grid_n_components if k <= max_nc]
 if not grid_n_components:
     grid_n_components = [min(20, max_nc)]
 
-# 只拟合一次 PCA，用最大的 k，这样循环里直接切片前 k 个主成分即可
+# Fit PCA only once with the largest K later loop just slices the first k PCs
 Kmax = max(grid_n_components)
 pca = PCA(n_components=Kmax, svd_solver='randomized', iterated_power=1)
 
-# **在全量数据上拟合 PCA（会有数据泄露，但这是你希望的设置）**
-Z_all = pca.fit_transform(Xn_all)   # 形状: (n_samples, Kmax)
 
+Z_all = pca.fit_transform(Xn_all)   
 test_scores = []
 train_scores = []
 best_records = []  # (k, C_fixed, train_score, test_score)
 
 for k in grid_n_components:
-    # 取前 k 个主成分，并按原索引还原 train/test
+    # Take the first k principal components and restore original train/test split
     Ztr = Z_all[train_idx, :k]
     Zte = Z_all[test_idx, :k]
     ytr = yn_all[train_idx]
     yte = yn_all[test_idx]
 
-    # 更快的线性 SVM：LinearSVC（复用 Q4 的最佳 C）
+    # Faster linear SVM: LinearSVC (reuse the best C from Q4)
     clf = LinearSVC(C=C_fixed, dual="auto", max_iter=5000)
     clf.fit(Ztr, ytr)
 
@@ -458,13 +464,13 @@ for k in grid_n_components:
     test_scores.append(te)
     best_records.append((k, C_fixed, tr, te))
 
-# 打印最佳的 n_components 及对应分数
+# Print the best n_components and corresponding scores
 best_idx = int(np.argmax(test_scores))
 best_k, best_C, best_tr, best_te = best_records[best_idx]
 print(f"Best n_components = {best_k}, best C = {best_C}")
 print(f"Train score = {best_tr:.3f}, Test score = {best_te:.3f}")
 
-# 可视化：测试分数 vs n_components
+# Visualization: test accuracy vs n_components
 plt.figure()
 plt.plot(grid_n_components, test_scores, marker='o')
 plt.xlabel("n_components (PCA, fit sur full data)")
@@ -472,30 +478,23 @@ plt.ylabel("Test accuracy (LinearSVC)")
 plt.title("Impact de la dimension apres PCA (fit full) sur donnees bruitees")
 plt.tight_layout()
 plt.show()
-
 ```
 
-**Analyse :** Les résultats sont spectaculaires. En utilisant la PCA pour réduire la dimensionnalité des données bruitées, nous avons pu récupérer, et même légèrement dépasser, les performances du modèle sur les données originales non bruitées. Le graphique montre qu'un nombre optimal de composantes (autour de 100-150) permet de capturer l'essentiel de l'information utile tout en filtrant une grande partie du bruit. Cela démontre l'efficacité de la PCA comme technique de pré-traitement pour les données de grande dimension.
+**Analyse :** En utilisant l'ACP pour réduire la dimensionnalité des données bruitées, nous pouvons observer qu'au début, la précision connaît une légère baisse. Cependant, à mesure que le nombre de `n_components` augmente, elle amorce une remontée. Un nombre optimal de composantes principales (autour de 100-150) permet de capturer l'essentiel de l'information utile tout en filtrant une grande partie du bruit. Cela démontre l'efficacité de l'ACP en tant que technique de pré-traitement pour les données de grande dimension.
 
 ## Q7: Biais dans le prétraitement des données (Script Original)
 
 La question 7 du TP demande d'identifier un biais dans le prétraitement des données du script `svm_script.py`. Ce biais est un problème classique de **fuite de données (data leakage)**.
 
-Dans le script initial fourni pour le TP, l'étape de standardisation des caractéristiques (`X -= np.mean(X, axis=0); X /= np.std(X, axis=0)`) est appliquée sur **l'ensemble du jeu de données `X`**, *avant* de le diviser en un ensemble d'entraînement et un ensemble de test.
+Dans le script, pour la tâche sur les visages (LFW), la standardisation est effectuée sur l'ensemble des données *avant* la séparation en ensembles d'entraînement et de test :
 
-**Pourquoi est-ce un biais ?**
+```python
+X -= np.mean(X, axis=0)
+X /= np.std(X, axis=0)
+```
 
-Le `StandardScaler` (ou la standardisation manuelle) calcule la moyenne et l'écart-type des données pour les centrer et les réduire. En effectuant cette opération sur la totalité des données, les statistiques de l'ensemble de test (moyenne et écart-type) sont utilisées pour transformer l'ensemble d'entraînement. Autrement dit, le modèle, pendant sa phase d'apprentissage, a accès à des informations provenant de données qu'il n'est pas censé avoir vues.
+Ce n'est qu'ensuite que les données sont divisées en deux moitiés (entraînement et test) après une permutation aléatoire. Cela signifie que la moyenne et l'écart-type ont été calculés en "voyant" les données de test. Il s'agit d'un cas classique de fuite de données: des informations de l'ensemble de test s'infiltrent prématurément dans le processus d'entraînement, ce qui conduit à des scores de test artificiellement élevés et à une évaluation trop optimiste.
 
-**Quel est l'impact ?**
-
-Ce biais conduit à une **estimation trop optimiste des performances de généralisation du modèle**. Le score obtenu sur l'ensemble de test est artificiellement gonflé car les données de test ne sont plus totalement "inconnues" du processus d'entraînement.
-
-**La procédure correcte (appliquée dans ce rapport) :**
-
-1.  **Diviser** les données en ensemble d'entraînement et de test.
-2.  **Ajuster (`fit`)** le `StandardScaler` **uniquement** sur l'ensemble d'entraînement pour apprendre les paramètres de mise à l'échelle (moyenne et écart-type).
-3.  **Appliquer la transformation (`transform`)** avec ce même scaler sur l'ensemble d'entraînement ET sur l'ensemble de test.
 
 # Conclusion
 
